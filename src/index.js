@@ -1,54 +1,43 @@
-const random = Math.random
+const seed = 5625463739 // +(new Date())
+console.log(seed)
+const random = alea(seed)
 
-const BOID_COUNT_CBRT = 32
-const STAGE_SIZE = 20
+const CROWD_SIZE_CBRT = 32
+const STAGE_SIZE_CBRT = 40
 
-setTimeout(() => {
+setTimeout(async () => {
+  const result = await fetch('vendor/noise2D.glsl')
+  window.noise2D = await result.text()
   const renderer = new THREE.WebGLRenderer()
   renderer.setPixelRatio(window.devicePixelRatio)
   renderer.setSize(window.innerWidth, window.innerHeight)
   document.getElementById('js-app').appendChild(renderer.domElement)
-  const camera = new THREE.PerspectiveCamera(27, window.innerWidth / window.innerHeight, 5, 35000)
-  camera.position.z = 2750
-  const geometry = new THREE.BufferGeometry()
+  const camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 0.1, 10000)
+  camera.position.copy((new THREE.Vector3(1, 1, 1)).normalize().multiplyScalar(700))
   const scene = new THREE.Scene()
-  const positions = []
-  const colors = []
-  const color = new THREE.Color()
-  const width = BOID_COUNT_CBRT
-  const height = BOID_COUNT_CBRT
-  const depth = BOID_COUNT_CBRT
-  for (let z = 0; z < depth; z++) {
-    for (let y = 0; y < height; y++) {
-      for (let x = 0; x < width; x++) {
-        const index = (x + y * width + z * width * height) * 3
-        positions[index + 0] = x * STAGE_SIZE - (width * STAGE_SIZE) / 2
-        positions[index + 1] = y * STAGE_SIZE - (height * STAGE_SIZE) / 2
-        positions[index + 2] = z * STAGE_SIZE - (depth * STAGE_SIZE) / 2
-        color.setRGB(x / width, y / height, z / depth)
-        colors[index + 0] = color.r
-        colors[index + 1] = color.g
-        colors[index + 2] = color.b
-      }
-    }
-  }
-  geometry.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3))
-  geometry.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3))
-  geometry.computeBoundingSphere()
-  const material = new THREE.PointsMaterial({
-    size: 15,
-    vertexColors: true,
-  })
-  const points = new THREE.Points(geometry, material)
-  scene.add(points)
+  setupLights(scene)
+  const composer = GPUIO.GPUComposer.initWithThreeRenderer(renderer)
+  composer.undoThreeState()
+  const crowd = new Crowd(
+    CROWD_SIZE_CBRT,
+    STAGE_SIZE_CBRT,
+    composer,
+  )
+  scene.add(crowd)
   const gizmo = new THREE.AxesHelper(310)
-  scene.add(gizmo)
-  const controls = new THREE.OrbitControls(camera, renderer.domElement)
+  // scene.add(gizmo)
+  const controls = new OrbitControls(camera, renderer.domElement)
+  const stats = new Stats()
+  stats.showPanel(0)
+  document.body.appendChild(stats.dom)
   render(
     renderer,
     scene,
     camera,
     controls,
+    composer,
+    crowd,
+    stats,
   )
 }, 0)
 
@@ -57,14 +46,68 @@ function render (
   scene,
   camera,
   controls,
+  composer,
+  crowd,
+  stats,
 ) {
-  requestAnimationFrame(() => {
+  requestAnimationFrame((time) => {
+    stats.begin()
+    crowd.step(time)
+    composer.resetThreeState()
+    renderer.render(scene, camera)
+    composer.undoThreeState()
+    stats.end()
     render(
       renderer,
       scene,
       camera,
       controls,
+      composer,
+      crowd,
+      stats,
     )
   })
-  renderer.render(scene, camera)
+}
+
+function setupLights (
+  scene,
+) {
+  const ambientLight = new THREE.AmbientLight(
+    0xffffff,
+    0.3
+  )
+  scene.add(ambientLight)
+  const sunLight = new THREE.DirectionalLight(
+    0xffffff,
+    0.5
+  )
+  sunLight.position.set(
+    -1,
+    1,
+    1,
+  )
+  sunLight.lookAt(
+    0,
+    0,
+    0,
+  )
+  scene.add(sunLight)
+  const moonLight = new THREE.DirectionalLight(
+    0xffffff,
+    0.3
+  )
+  moonLight.position.set(
+    1,
+    -1,
+    -1,
+  )
+  moonLight.lookAt(
+    0,
+    0,
+    0,
+  )
+  // scene.add(moonLight)
+  const pointLight = new THREE.PointLight(0xffffff, 0.6, 32000)
+  pointLight.position.set(0, 0, 0)
+  scene.add(pointLight)
 }
